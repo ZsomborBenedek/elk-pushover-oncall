@@ -1,6 +1,11 @@
 version: "3"
 services:
-  alerthandler:
+  fastapi:
     build: .
+    command: "uvicorn server:app --proxy-headers --host 0.0.0.0 --reload"
+    volumes:
+      - ./app:/code
+    env_file:
+      - .env
     ports:
-      - 8444:80
+      - 8444:8000

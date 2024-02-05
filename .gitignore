@@ -1,3 +1,4 @@
 example_request.json
 example_output.json
-__pycache__/server.cpython-311.pyc
+*.pyc
+.env
