@@ -26,8 +26,8 @@ pushover_credentials = {
 
 devices = ["zsombor-phone", "zsombor-phone", "zsombor-phone"]
 
-retry_interval = os.environ.get("RETRY_INTERVAL", 30)
-user_timeout = os.environ.get("USER_TIMEOUT", 500)
+retry_interval = int(os.environ.get("RETRY_INTERVAL", 30))
+user_timeout = int(os.environ.get("USER_TIMEOUT", 300))
 
 app = FastAPI()
 
@@ -107,8 +107,6 @@ def send_message(alert_data: dict, device: str, retry: int, expire: int) -> str:
         "expire": expire
     }
 
-    gunicorn_logger.warning(f"Sending message to {device}")
-
     response = requests.post(url, data)
     response.raise_for_status()
 
@@ -121,19 +119,19 @@ def is_acknowledged(receipt: str, token) -> bool:
     response = requests.get(url)
     data = response.json()
 
-    if data["acknowledged_by_device"] != "":
-        gunicorn_logger.warning(
-            f"Message acknowledged by {data['acknowledged_by_device']}")
-
     return True if data["acknowledged"] == 1 else False
 
 
 def alert_process(payload: Payload):
     alert_data = parse_payload(payload)
 
+    gunicorn_logger.warning(f"Received alert with data: {alert_data}")
+
     for id, device in enumerate(devices):
         receipt = send_message(
             alert_data, device, retry_interval, user_timeout)
+        
+        gunicorn_logger.warning(f"Sent notification to {device}, trying next device in {user_timeout} seconds")
 
         # Sleep for the specified user timeout plus a buffer
         time.sleep(user_timeout + 10)
@@ -141,10 +139,10 @@ def alert_process(payload: Payload):
         acknowledged = is_acknowledged(receipt, pushover_credentials["token"])
 
         if acknowledged:
+            gunicorn_logger.warning(f"Message acknowledged by {device}")
             return
         else:
-            gunicorn_logger.warning(
-                f"Message not acknowledged")
+            gunicorn_logger.warning(f"Message not acknowledged")
 
 
 @app.post("/")
