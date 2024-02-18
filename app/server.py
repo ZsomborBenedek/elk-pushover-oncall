@@ -1,4 +1,5 @@
 from functools import reduce
+from logging.handlers import RotatingFileHandler
 import os
 import time
 from fastapi import FastAPI, BackgroundTasks
@@ -8,26 +9,44 @@ import logging
 from fastapi.logger import logger as fastapi_logger
 import requests
 
-gunicorn_error_logger = logging.getLogger("gunicorn.error")
-gunicorn_logger = logging.getLogger("gunicorn")
-uvicorn_access_logger = logging.getLogger("uvicorn.access")
-uvicorn_access_logger.handlers = gunicorn_error_logger.handlers
-
-fastapi_logger.handlers = gunicorn_error_logger.handlers
-
-included_fields = [
-    "@timestamp", "related", "kibana.alert.rule.risk_score", "kibana.alert.rule.severity", "signal.rule.description"
-]
-
+retry_interval = int(os.environ.get("RETRY_INTERVAL", 30))
+user_timeout = int(os.environ.get("USER_TIMEOUT", 300))
 pushover_credentials = {
     "token": os.environ.get("PUSHOVER_TOKEN"),
     "user": os.environ.get("PUSHOVER_USER"),
 }
 
-devices = ["zsombor-phone", "zsombor-phone", "zsombor-phone"]
+included_fields = str(os.environ.get("INCLUDED_FIELDS")).split(",")
 
-retry_interval = int(os.environ.get("RETRY_INTERVAL", 30))
-user_timeout = int(os.environ.get("USER_TIMEOUT", 300))
+devices = str(os.environ.get("DEVICES")).split(",")
+
+MAX_BYTES = 10000000
+BACKUP_COUNT = 9
+
+logger = logging.getLogger('uvicorn.error')
+logger.setLevel(logging.INFO)
+
+log_format = logging.Formatter('[%(levelname)s] %(asctime)s - %(message)s')
+
+# stream_handler = logging.StreamHandler()
+# stream_handler.setFormatter(log_format)
+# stream_handler.setLevel(logging.INFO)
+# logger.addHandler(stream_handler)
+
+info_handler = RotatingFileHandler(
+    'info.log', maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT)
+info_handler.setFormatter(log_format)
+info_handler.setLevel(logging.INFO)
+logger.addHandler(info_handler)
+
+error_handler = RotatingFileHandler(
+    'error.log', maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT)
+error_handler.setFormatter(log_format)
+error_handler.setLevel(logging.ERROR)
+logger.addHandler(error_handler)
+
+fastapi_logger.handlers = logger.handlers
+
 
 app = FastAPI()
 
@@ -125,13 +144,14 @@ def is_acknowledged(receipt: str, token) -> bool:
 def alert_process(payload: Payload):
     alert_data = parse_payload(payload)
 
-    gunicorn_logger.warning(f"Received alert with data: {alert_data}")
+    logger.info(f"Received alert with data: {alert_data}")
 
     for id, device in enumerate(devices):
         receipt = send_message(
             alert_data, device, retry_interval, user_timeout)
-        
-        gunicorn_logger.warning(f"Sent notification to {device}, trying next device in {user_timeout} seconds")
+
+        logger.info(
+            f"Sent notification to {device}, trying next device in {user_timeout} seconds")
 
         # Sleep for the specified user timeout plus a buffer
         time.sleep(user_timeout + 10)
@@ -139,10 +159,10 @@ def alert_process(payload: Payload):
         acknowledged = is_acknowledged(receipt, pushover_credentials["token"])
 
         if acknowledged:
-            gunicorn_logger.warning(f"Message acknowledged by {device}")
+            logger.info(f"Message acknowledged by {device}")
             return
         else:
-            gunicorn_logger.warning(f"Message not acknowledged")
+            logger.error(f"Message not acknowledged: {alert_data}")
 
 
 @app.post("/")
@@ -152,6 +172,6 @@ async def post_alert(payload: Payload, background_tasks: BackgroundTasks):
 
 
 if __name__ != "__main__":
-    fastapi_logger.setLevel(gunicorn_logger.level)
+    fastapi_logger.setLevel(logger.level)
 else:
     fastapi_logger.setLevel(logging.DEBUG)

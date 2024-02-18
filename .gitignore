@@ -2,3 +2,4 @@ example_request.json
 example_output.json
 *.pyc
 .env
+*.log
