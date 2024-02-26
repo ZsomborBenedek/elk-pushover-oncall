@@ -9,6 +9,7 @@ import logging
 from fastapi.logger import logger as fastapi_logger
 import requests
 
+
 retry_interval = int(os.environ.get("RETRY_INTERVAL", 30))
 user_timeout = int(os.environ.get("USER_TIMEOUT", 300))
 pushover_credentials = {
@@ -19,19 +20,16 @@ pushover_credentials = {
 included_fields = str(os.environ.get("INCLUDED_FIELDS")).split(",")
 
 devices = str(os.environ.get("DEVICES")).split(",")
+default_device = str(os.environ.get("DEFAULT_DEVICE"))
 
 MAX_BYTES = 10000000
 BACKUP_COUNT = 9
+
 
 logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.INFO)
 
 log_format = logging.Formatter('[%(levelname)s] %(asctime)s - %(message)s')
-
-# stream_handler = logging.StreamHandler()
-# stream_handler.setFormatter(log_format)
-# stream_handler.setLevel(logging.INFO)
-# logger.addHandler(stream_handler)
 
 info_handler = RotatingFileHandler(
     'info.log', maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT)
@@ -142,27 +140,37 @@ def is_acknowledged(receipt: str, token) -> bool:
 
 
 def alert_process(payload: Payload):
-    alert_data = parse_payload(payload)
+    try:
+        alert_data = parse_payload(payload)
 
-    logger.info(f"Received alert with data: {alert_data}")
+        logger.info(f"Received alert with data: {alert_data}")
 
-    for id, device in enumerate(devices):
-        receipt = send_message(
-            alert_data, device, retry_interval, user_timeout)
+        for id, device in enumerate(devices):
+            receipt = send_message(
+                alert_data, device, retry_interval, user_timeout)
 
-        logger.info(
-            f"Sent notification to {device}, trying next device in {user_timeout} seconds")
+            logger.info(
+                f"Sent notification to {device}, trying next device in {user_timeout} seconds")
 
-        # Sleep for the specified user timeout plus a buffer
-        time.sleep(user_timeout + 10)
+            # Sleep for the specified user timeout plus a buffer
+            time.sleep(user_timeout + 10)
 
-        acknowledged = is_acknowledged(receipt, pushover_credentials["token"])
+            acknowledged = is_acknowledged(
+                receipt, pushover_credentials["token"])
 
-        if acknowledged:
-            logger.info(f"Message acknowledged by {device}")
-            return
-        else:
-            logger.error(f"Message not acknowledged: {alert_data}")
+            if acknowledged:
+                logger.info(f"Message acknowledged by {device}")
+                return
+            else:
+                logger.error(f"Message not acknowledged: {alert_data}")
+                raise TimeoutError("Nobody acknowledged the notification")
+    except TimeoutError as e:
+        send_message(
+            {"title": e.args[0], "message": "Please check Kibana"}, default_device, retry_interval, user_timeout)
+    except Exception as e:
+        send_message(
+            {"title": e.args[0], "message": "Please check Kibana"}, default_device, retry_interval, user_timeout)
+        logger.error(str(e))
 
 
 @app.post("/")
