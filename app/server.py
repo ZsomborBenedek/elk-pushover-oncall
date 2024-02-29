@@ -82,15 +82,17 @@ def alert_process(payload: Payload):
                 logger.info(f"Message acknowledged by {device}")
                 return
             else:
-                logger.error(f"Message not acknowledged: {alert_data}")
-                raise TimeoutError("Nobody acknowledged the notification")
+                logger.error(f"Message not acknowledged by {device}")
+        else:
+            raise TimeoutError("Nobody acknowledged the notification")
     except TimeoutError as e:
         alert.send_message(
-            {"title": e.args[0], "message": "Please check Kibana"}, DEFAULT_DEVICE
+            {"title": "Please check Kibana", "message": e.args[0]}, DEFAULT_DEVICE
         )
     except Exception as e:
         alert.send_message(
-            {"title": e.args[0], "message": "Please check Kibana"}, DEFAULT_DEVICE
+            {"title": "Please check Alerthandler", "message": e.args[0]},
+            DEFAULT_DEVICE,
         )
         logger.error(str(e))
 
