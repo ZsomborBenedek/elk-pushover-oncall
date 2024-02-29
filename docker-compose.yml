@@ -9,3 +9,4 @@ services:
       - .env
     ports:
       - 8444:8000
+    restart: unless-stopped
