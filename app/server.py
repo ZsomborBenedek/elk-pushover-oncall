@@ -12,8 +12,8 @@ from payload import Payload
 RETRY_INTERVAL = int(os.environ.get("RETRY_INTERVAL", 30))
 USER_TIMEOUT = int(os.environ.get("USER_TIMEOUT", 300))
 PUSHOVER_CREDENTIALS = {
-    "token": os.environ.get("PUSHOVER_TOKEN"),
-    "user": os.environ.get("PUSHOVER_USER"),
+    "token": str(os.environ.get("PUSHOVER_TOKEN")),
+    "user": str(os.environ.get("PUSHOVER_USER")),
 }
 
 INCLUDED_FIELDS = str(os.environ.get("INCLUDED_FIELDS")).split(",")
@@ -46,17 +46,7 @@ logger.addHandler(error_handler)
 
 fastapi_logger.handlers = logger.handlers
 
-
 app = FastAPI()
-
-
-def is_acknowledged(receipt: str, token) -> bool:
-    url = f"https://api.pushover.net/1/receipts/{receipt}.json?token={token}"
-
-    response = requests.get(url)
-    data = response.json()
-
-    return True if data["acknowledged"] == 1 else False
 
 
 def alert_process(payload: Payload):
@@ -76,7 +66,7 @@ def alert_process(payload: Payload):
             # Sleep for the specified user timeout plus a buffer
             time.sleep(USER_TIMEOUT + 10)
 
-            acknowledged = is_acknowledged(receipt, PUSHOVER_CREDENTIALS["token"])
+            acknowledged = alert.is_acknowledged(receipt, PUSHOVER_CREDENTIALS["token"])
 
             if acknowledged:
                 logger.info(f"Message acknowledged by {device}")

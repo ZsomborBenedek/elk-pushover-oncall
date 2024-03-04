@@ -7,6 +7,16 @@ services:
       - ./app:/code
     env_file:
       - .env
-    ports:
-      - 8444:8000
     restart: unless-stopped
+
+  nginx:
+    image: nginx
+    ports:
+      - "8444:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+    depends_on:
+      - fastapi
+    env_file:
+      - .env

@@ -3,3 +3,4 @@ example_*.json
 .env
 *.log
 .*/
+nginx/certs/*

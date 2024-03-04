@@ -33,7 +33,7 @@ class Alerter:
 
         return response.json()["receipt"]
 
-    def is_acknowledged(self, receipt: str, token) -> bool:
+    def is_acknowledged(self, receipt: str, token: str) -> bool:
         url = f"https://api.pushover.net/1/receipts/{receipt}.json?token={token}"
 
         response = requests.get(url)
