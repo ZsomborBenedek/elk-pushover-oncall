@@ -12,7 +12,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "8444:443"
+      - ${APP_PORT:-8444}:443
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/certs:/etc/nginx/certs
