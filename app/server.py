@@ -1,10 +1,9 @@
-from logging.handlers import RotatingFileHandler
 import os
 import time
-from fastapi import FastAPI, BackgroundTasks
 import logging
+from logging.handlers import RotatingFileHandler
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.logger import logger as fastapi_logger
-import requests
 from alerter import Alerter
 from payload import Payload
 

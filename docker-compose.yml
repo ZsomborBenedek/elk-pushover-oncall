@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx
+    image: nginx:alpine
     ports:
       - "8444:443"
     volumes:
