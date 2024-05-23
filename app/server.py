@@ -2,10 +2,11 @@ import os
 import time
 import logging
 from logging.handlers import RotatingFileHandler
+from typing import Union
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.logger import logger as fastapi_logger
 from alerter import Alerter
-from payload import Payload
+from payload import ElasticPayload, Payload, PraecoPayload
 
 
 RETRY_INTERVAL = int(os.environ.get("RETRY_INTERVAL", 30))
@@ -16,6 +17,7 @@ PUSHOVER_CREDENTIALS = {
 }
 
 INCLUDED_FIELDS = str(os.environ.get("INCLUDED_FIELDS")).split(",")
+TITLE_FIELD = str(os.environ.get("TITLE_FIELD"))
 
 DEVICES = str(os.environ.get("DEVICES")).split(",")
 DEFAULT_DEVICE = str(os.environ.get("DEFAULT_DEVICE"))
@@ -48,15 +50,20 @@ fastapi_logger.handlers = logger.handlers
 app = FastAPI()
 
 
-def alert_process(payload: Payload):
+def alert_process(payload: Payload | dict):
     try:
-        alert_data = payload.parse_payload(INCLUDED_FIELDS)
-        alert = Alerter(PUSHOVER_CREDENTIALS, RETRY_INTERVAL, USER_TIMEOUT)
+        alerter = Alerter(PUSHOVER_CREDENTIALS, RETRY_INTERVAL, USER_TIMEOUT)
+
+        if isinstance(payload, ElasticPayload):
+            alert_data = payload.parse_payload(INCLUDED_FIELDS)
+        elif isinstance(payload, dict):
+            pp = PraecoPayload(TITLE_FIELD, payload)
+            alert_data = pp.parse_payload(INCLUDED_FIELDS)
 
         logger.info(f"Received alert with data: {alert_data}")
 
         for id, device in enumerate(DEVICES):
-            receipt = alert.send_message(alert_data, device)
+            receipt = alerter.send_message(alert_data, device)
 
             logger.info(
                 f"Sent notification to {device}, trying next device in {USER_TIMEOUT} seconds"
@@ -65,7 +72,9 @@ def alert_process(payload: Payload):
             # Sleep for the specified user timeout plus a buffer
             time.sleep(USER_TIMEOUT + 10)
 
-            acknowledged = alert.is_acknowledged(receipt, PUSHOVER_CREDENTIALS["token"])
+            acknowledged = alerter.is_acknowledged(
+                receipt, PUSHOVER_CREDENTIALS["token"]
+            )
 
             if acknowledged:
                 logger.info(f"Message acknowledged by {device}")
@@ -75,11 +84,11 @@ def alert_process(payload: Payload):
         else:
             raise TimeoutError("Nobody acknowledged the notification")
     except TimeoutError as e:
-        alert.send_message(
+        alerter.send_message(
             {"title": "Please check Kibana", "message": e.args[0]}, DEFAULT_DEVICE
         )
     except Exception as e:
-        alert.send_message(
+        alerter.send_message(
             {"title": "Please check Alerthandler", "message": e.args[0]},
             DEFAULT_DEVICE,
         )
@@ -87,7 +96,9 @@ def alert_process(payload: Payload):
 
 
 @app.post("/")
-async def post_alert(payload: Payload, background_tasks: BackgroundTasks):
+async def post_alert(
+    payload: Union[ElasticPayload, dict], background_tasks: BackgroundTasks
+):
     background_tasks.add_task(alert_process, payload)
     return {"message": "Alert added to queue"}
 
